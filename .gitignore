@@ -1,0 +1,6 @@
+.env
+data/raw/**/*.zip
+data/raw/**/*.csv
+data/raw/**/*.pdf
+!data/raw/.gitkeep
+*.log
