@@ -422,16 +422,17 @@ LEFT JOIN (
     -- não da tabela raw: a raw pode não ter sq_candidato nativo (anos sem
     -- essa coluna, ver bloco anterior) — o já-carregado sempre tem, porque
     -- foi resolvido no INSERT de tse_votacaosecao.
-    -- nr_turno = 1 sempre, mesmo pra quem foi pro 2º turno: conferido
-    -- contra produção (MySQL, candidato que foi a 2º turno em SP/2018) —
-    -- total_votos é o resultado do 1º turno, igual nas duas linhas de
-    -- tse_candidatos (uma por turno). Sem esse filtro, somava os dois
-    -- turnos juntos (número sem sentido: nem o resultado do 1º nem do 2º).
-    SELECT sq_candidato, SUM(qt_votos) AS total_votos
+    -- total_votos = votos do candidato NO TURNO DA LINHA (cada candidato
+    -- que foi ao 2º turno tem uma linha por turno). Até 2026-10-08 era
+    -- sempre o 1º turno nas duas linhas (convenção herdada do MySQL); isso
+    -- fazia o getVotos por UF mostrar o 1º turno no 2º e o crescimento
+    -- 1º→2º de ia/facts.ts dar zero. Ver sql/40_fix_total_votos_2turno.sql
+    -- e docs/decisions/JOURNAL.md (workspace) do mesmo dia.
+    SELECT sq_candidato, nr_turno, SUM(qt_votos) AS total_votos
     FROM raiox.tse_votacaosecao
-    WHERE uf = :'uf' AND ano_eleicao = :ano AND nr_turno = 1
-    GROUP BY sq_candidato
-) vt ON vt.sq_candidato = c.sq_candidato
+    WHERE uf = :'uf' AND ano_eleicao = :ano
+    GROUP BY sq_candidato, nr_turno
+) vt ON vt.sq_candidato = c.sq_candidato AND vt.nr_turno = c.nr_turno::bigint
 -- '#NULO'/'#NULO#' = candidatura sem situação de totalização (indeferida/
 -- cancelada antes da apuração — nunca entrou na votação). Descoberto
 -- comparando contagem contra o schema `raiox` já validado (AC/2024):
