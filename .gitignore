@@ -4,3 +4,4 @@ data/raw/**/*.csv
 data/raw/**/*.pdf
 !data/raw/.gitkeep
 *.log
+data/aptos_munzona.csv

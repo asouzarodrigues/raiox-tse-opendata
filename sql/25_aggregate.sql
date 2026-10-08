@@ -20,6 +20,9 @@
 --   brancos  = SUM(qt_votos) WHERE nr_votavel = 95
 --   votantes = SUM(qt_votos)
 --   ausentes = eleitores_do_escopo (por tipo de cargo) - votantes
+-- Eleitores SEMPRE do turno da linha: tse_locais tem uma linha por seção
+-- POR TURNO, e somar os dois dobrava o eleitorado (corrigido em 2026-10-08,
+-- ver sql/43_fix_eleitorado.sql).
 -- Mapeamento cd_cargo -> coluna de eleitores (mesmo de summary.service.ts
 -- no raiox-votos-node):
 --   1,2        -> qt_eleitor_eleicao_federal
@@ -78,24 +81,24 @@ WITH votos AS (
     GROUP BY ano_eleicao, nr_turno, cd_cargo
 ),
 eleitores AS (
-    SELECT ano_eleicao,
+    SELECT ano_eleicao, nr_turno,
            SUM(qt_eleitor_eleicao_federal)   AS federal,
            SUM(qt_eleitor_eleicao_estadual)  AS estadual,
            SUM(qt_eleitor_eleicao_municipal) AS municipal
     FROM (
-        SELECT DISTINCT ano_eleicao, cd_municipio, nr_zona, nr_secao,
+        SELECT DISTINCT ano_eleicao, nr_turno, cd_municipio, nr_zona, nr_secao,
                qt_eleitor_eleicao_federal, qt_eleitor_eleicao_estadual, qt_eleitor_eleicao_municipal
         FROM raiox.tse_locais
         WHERE uf = :'uf' AND ano_eleicao = :ano
     ) t
-    GROUP BY ano_eleicao
+    GROUP BY ano_eleicao, nr_turno
 )
 SELECT
     :'uf', :ano::bigint * 1000000 + row_number() OVER (ORDER BY v.nr_turno, v.cd_cargo),
     v.ano_eleicao, v.nr_turno, v.cd_cargo, v.validos, v.nulos, v.brancos, v.votantes,
     e.federal, e.estadual, e.municipal
 FROM votos v
-LEFT JOIN eleitores e ON e.ano_eleicao = v.ano_eleicao;
+LEFT JOIN eleitores e ON e.ano_eleicao = v.ano_eleicao AND e.nr_turno = v.nr_turno;
 
 -- ===================== tse_votosvalidos_cidade =====================
 TRUNCATE raiox.tse_votosvalidos_cidade_:uf_ano;
@@ -113,17 +116,17 @@ WITH votos AS (
     GROUP BY ano_eleicao, nr_turno, cd_cargo, cd_municipio
 ),
 eleitores AS (
-    SELECT ano_eleicao, cd_municipio,
+    SELECT ano_eleicao, nr_turno, cd_municipio,
            SUM(qt_eleitor_eleicao_federal)   AS federal,
            SUM(qt_eleitor_eleicao_estadual)  AS estadual,
            SUM(qt_eleitor_eleicao_municipal) AS municipal
     FROM (
-        SELECT DISTINCT ano_eleicao, cd_municipio, nr_zona, nr_secao,
+        SELECT DISTINCT ano_eleicao, nr_turno, cd_municipio, nr_zona, nr_secao,
                qt_eleitor_eleicao_federal, qt_eleitor_eleicao_estadual, qt_eleitor_eleicao_municipal
         FROM raiox.tse_locais
         WHERE uf = :'uf' AND ano_eleicao = :ano
     ) t
-    GROUP BY ano_eleicao, cd_municipio
+    GROUP BY ano_eleicao, nr_turno, cd_municipio
 )
 SELECT
     :'uf', :ano::bigint * 1000000 + row_number() OVER (ORDER BY v.nr_turno, v.cd_cargo, v.cd_municipio),
@@ -135,7 +138,7 @@ SELECT
     END - v.votantes) AS ausentes,
     v.votantes
 FROM votos v
-LEFT JOIN eleitores e ON e.ano_eleicao = v.ano_eleicao AND e.cd_municipio = v.cd_municipio;
+LEFT JOIN eleitores e ON e.ano_eleicao = v.ano_eleicao AND e.nr_turno = v.nr_turno AND e.cd_municipio = v.cd_municipio;
 
 -- ===================== tse_votosvalidos_bairro =====================
 -- Fórmula idêntica a raiox-migracao-piloto/sql/50_backfill_votosvalidos_
@@ -156,17 +159,17 @@ WITH votos AS (
     GROUP BY ano_eleicao, nr_turno, cd_cargo, cd_municipio, nm_bairro
 ),
 eleitores AS (
-    SELECT ano_eleicao, cd_municipio, nm_bairro,
+    SELECT ano_eleicao, nr_turno, cd_municipio, nm_bairro,
            SUM(qt_eleitor_eleicao_federal)   AS federal,
            SUM(qt_eleitor_eleicao_estadual)  AS estadual,
            SUM(qt_eleitor_eleicao_municipal) AS municipal
     FROM (
-        SELECT DISTINCT ano_eleicao, cd_municipio, nm_bairro, nr_zona, nr_secao,
+        SELECT DISTINCT ano_eleicao, nr_turno, cd_municipio, nm_bairro, nr_zona, nr_secao,
                qt_eleitor_eleicao_federal, qt_eleitor_eleicao_estadual, qt_eleitor_eleicao_municipal
         FROM raiox.tse_locais
         WHERE uf = :'uf' AND ano_eleicao = :ano
     ) t
-    GROUP BY ano_eleicao, cd_municipio, nm_bairro
+    GROUP BY ano_eleicao, nr_turno, cd_municipio, nm_bairro
 )
 SELECT
     :'uf', :ano::bigint * 1000000 + row_number() OVER (ORDER BY v.nr_turno, v.cd_cargo, v.cd_municipio, v.nm_bairro),
@@ -178,7 +181,7 @@ SELECT
     END - v.votantes) AS ausentes,
     v.votantes
 FROM votos v
-LEFT JOIN eleitores e ON e.ano_eleicao = v.ano_eleicao AND e.cd_municipio = v.cd_municipio AND e.nm_bairro IS NOT DISTINCT FROM v.nm_bairro;
+LEFT JOIN eleitores e ON e.ano_eleicao = v.ano_eleicao AND e.nr_turno = v.nr_turno AND e.cd_municipio = v.cd_municipio AND e.nm_bairro IS NOT DISTINCT FROM v.nm_bairro;
 
 -- ===================== tse_votosvalidos_local =====================
 TRUNCATE raiox.tse_votosvalidos_local_:uf_ano;
@@ -199,17 +202,17 @@ WITH votos AS (
     GROUP BY ano_eleicao, nr_turno, cd_cargo, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao
 ),
 eleitores AS (
-    SELECT ano_eleicao, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao,
+    SELECT ano_eleicao, nr_turno, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao,
            SUM(qt_eleitor_eleicao_federal)   AS federal,
            SUM(qt_eleitor_eleicao_estadual)  AS estadual,
            SUM(qt_eleitor_eleicao_municipal) AS municipal
     FROM (
-        SELECT DISTINCT ano_eleicao, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao,
+        SELECT DISTINCT ano_eleicao, nr_turno, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao,
                nr_secao, qt_eleitor_eleicao_federal, qt_eleitor_eleicao_estadual, qt_eleitor_eleicao_municipal
         FROM raiox.tse_locais
         WHERE uf = :'uf' AND ano_eleicao = :ano
     ) t
-    GROUP BY ano_eleicao, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao
+    GROUP BY ano_eleicao, nr_turno, cd_municipio, nr_zona, nr_local_votacao, nm_local_votacao
 )
 SELECT
     :'uf', :ano::bigint * 1000000 + row_number() OVER (ORDER BY v.nr_turno, v.cd_cargo, v.cd_municipio, v.nr_zona, v.nr_local_votacao, v.nm_local_votacao),
@@ -223,7 +226,7 @@ SELECT
     v.votantes
 FROM votos v
 LEFT JOIN eleitores e
-       ON e.ano_eleicao = v.ano_eleicao AND e.cd_municipio = v.cd_municipio
+       ON e.ano_eleicao = v.ano_eleicao AND e.nr_turno = v.nr_turno AND e.cd_municipio = v.cd_municipio
       AND e.nr_zona = v.nr_zona AND e.nr_local_votacao = v.nr_local_votacao AND e.nm_local_votacao = v.nm_local_votacao;
 
 -- ===================== tse_votacaosecao_partido =====================
